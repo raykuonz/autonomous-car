@@ -36,7 +36,7 @@ class World {
 
         this.frameCount = 0;
 
-        this.cars = null;
+        this.cars = [];
         this.bestCar = null;
 
         this.generate();
@@ -336,7 +336,7 @@ class World {
         }
         context.globalAlpha = 1;
 
-        this.bestCar.draw(context, true);
+        this.bestCar?.draw(context, true);
 
         for (const segment of this.roadBorders) {
             segment.draw(context, { color: 'white', width: 4 })
