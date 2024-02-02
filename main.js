@@ -1,22 +1,34 @@
 const networkCanvas = document.querySelector('#networkCanvas');
 
 networkCanvas.width = 300;
+networkCanvas.height = 300;
+
+const miniMapCanvas = document.querySelector('#miniMapCanvas');
+
+miniMapCanvas.width = 300;
+miniMapCanvas.height = 300;
 
 const carCanvas = document.querySelector('#carCanvas');
 
-carCanvas.width = 200;
+carCanvas.width = window.innerWidth;
+carCanvas.height = window.innerHeight;
 
 const carCtx = carCanvas.getContext('2d');
 const networkCtx = networkCanvas.getContext('2d');
 
-const road = new Road(carCanvas.width / 2, carCanvas.width * 0.9);
+let world = World.load(worldData);
 
+const viewport = new Viewport(carCanvas, world.zoom, world.offset);
+const miniMap = new MiniMap(miniMapCanvas, world.graph, 300);
 
 let carAmount = 1;
 let mutation = 0.1;
 let cars = [];
 let bestCar = cars[0];
 let traffic = [];
+
+const roadBorders = world.roadBorders
+    .map((s) => [s.p1, s.p2]);
 
 function init() {
     // Generate AI cars for training
@@ -32,78 +44,69 @@ function init() {
             }
         }
     }
-
-    // Generate traffic on road
-    traffic = [
-        new Car(road.getLaneCenter(1), -100, 30, 50, 'DUMMY', 2),
-        new Car(road.getLaneCenter(0), -300, 30, 50, 'DUMMY', 2),
-        new Car(road.getLaneCenter(2), -300, 30, 50, 'DUMMY', 2),
-        new Car(road.getLaneCenter(0), -500, 30, 50, 'DUMMY', 2),
-        new Car(road.getLaneCenter(1), -500, 30, 50, 'DUMMY', 2),
-        new Car(road.getLaneCenter(1), -700, 30, 50, 'DUMMY', 2),
-        new Car(road.getLaneCenter(2), -700, 30, 50, 'DUMMY', 2),
-        new Car(road.getLaneCenter(0), -900, 30, 50, 'DUMMY', 2),
-        new Car(road.getLaneCenter(2), -900, 30, 50, 'DUMMY', 2),
-        new Car(road.getLaneCenter(1), -1100, 30, 50, 'DUMMY', 2),
-        new Car(road.getLaneCenter(2), -1100, 30, 50, 'DUMMY', 2),
-    ]
 }
 
 init();
 
 
-function animate() {
-    carCanvas.height = window.innerHeight;
-    networkCanvas.height = window.innerHeight;
+function animate(time) {
+
 
     for (let i = 0; i < traffic.length; i++) {
-        traffic[i].update(road.borders, []);
+        traffic[i].update(roadBorders, []);
     }
 
     for (let i = 0; i < cars.length; i++) {
-        cars[i].update(road.borders, traffic);
+        cars[i].update(roadBorders, traffic);
     }
 
     bestCar = cars.find((c) => {
-        return c.y === Math.min(...cars.map((c) => c.y))
+        return c.fitness === Math.max(...cars.map((c) => c.fitness))
     })
 
-    carCtx.save();
-    carCtx.translate(0, -bestCar.y + carCanvas.height * 0.7);
+    world.cars = cars;
+    world.bestCar = bestCar;
 
-    road.draw(carCtx);
+    viewport.offset.x = -bestCar.x;
+    viewport.offset.y = -bestCar.y;
+
+    viewport.reset();
+    const viewPoint = scale(viewport.getOffset(), -1);
+    world.draw(carCtx, viewPoint);
+    miniMap.update(viewPoint);
 
     for (let i = 0; i < traffic.length; i++) {
         traffic[i].draw(carCtx, 'red');
     }
 
-    carCtx.globalAlpha = 0.2;
+    networkCtx.lineDashOffset = -time / 50;
+    networkCtx.clearRect(0, 0, networkCtx.canvas.width, networkCtx.canvas.height);
+    Visualizer.drawNetwork(networkCtx, bestCar.brain);
 
-    for (let i = 0; i < cars.length; i++) {
-        cars[i].draw(carCtx, 'blue');
-    }
-
-    carCtx.globalAlpha = 1;
-
-    bestCar.draw(carCtx, 'blue', true);
-
-
-    carCtx.restore();
-
-    // TODO: Draw vosualizer
-    // Visualizer.drawNetwork(networkCtx, bestCar.brain);
 
     window.requestAnimationFrame(animate)
 }
 
-animate();
+animate(0);
 
 function generateCars(n) {
+
+    const startPoints = world.markings.filter((m) => m instanceof Start);
+    const startPoint = startPoints.length > 0
+        ? startPoints[0].center
+        : new Point(100, 100);
+    const dir = startPoints.length > 0
+        ? startPoints[0].directionVector
+        : new Point(0, -1);
+    const startAngle = -angle(dir) + Math.PI / 2;
+
+
+
     const cars = [];
 
     for (let i = 0; i < n; i++) {
         cars.push(
-            new Car(road.getLaneCenter(1), 100, 30, 50, 'AI')
+            new Car(startPoint.x, startPoint.y, 30, 50, startAngle, 'AI')
         );
     }
 
@@ -124,14 +127,13 @@ function discard() {
 function restart() {
     carAmount = parseInt(document.querySelector('#carAmount').value);
     mutation = parseFloat(document.querySelector('#mutation').value);
+    world = World.load(worldData);
 
     init();
 }
 
 function preloadBestBrain() {
-    localStorage.setItem('bestBrain', `{"levels":[{"inputs":[0.625494795714112,0.27634310794530814,0,0,0],"outputs":[1,1,0,0,1,1],"biases":[-0.2553435821915144,0.06594998337508465,0.318278888134688,0.18035790990845912,-0.06352143736340277,-0.08580920948509274],"weights":[[-0.11831797059060994,0.2688951777011297,-0.467371951581465,-0.28319450501059096,-0.10418291065585915,0.17590058547942256],[-0.421249671767985,0.2683901209369257,0.24340072125660933,0.34442836314074915,0.06566446780807084,-0.1403376523099306],[-0.14016959405185386,-0.15402321629753032,0.09723780555351173,-0.3607631249272975,0.10799963320206721,0.07584864571693045],[-0.047925532257957246,0.5997186993813909,-0.25015581010751214,0.043469577909108,-0.4455399730773441,-0.15513709211050533],[0.15415490816110586,0.3940093139036827,0.3218987056818184,-0.394682497025169,0.16885280078630877,0.37510335058979244]]},{"inputs":[1,1,0,0,1,1],"outputs":[1,1,1,0],"biases":[-0.18295560252897858,0.010928207930708547,0.10668337077828877,-0.3156090184057366],"weights":[[-0.04790278050024707,0.25562033681147484,-0.32463531979305466,-0.32330077018662445],[0.2812939347768584,0.05440265693870972,0.2892020091771688,-0.35525415118302583],[0.1947940366554684,-0.2679874493382665,0.18566523287480347,0.3341308464505089],[-0.21181470285484963,-0.06639678535776583,-0.06649599656559937,-0.28103531951453375],[-0.24086957228270137,-0.23729417262469976,0.2074391152526007,0.023980548199800205],[-0.11215915422770559,0.1865908904293714,0.0006361838727819841,-0.0483950860325416]]}]}`
-    );
 
-
+    localStorage.setItem('bestBrain', '{"levels":[{"inputs":[0.4389975046870186,0,0,0.31852818187794874,0.6151224162814175],"outputs":[1,1,0,0,1,0],"biases":[-0.1941535160697035,-0.020861534516009146,0.34532283352122445,0.15184180663430755,-0.12487457195843883,0.05797034221232368],"weights":[[-0.06148880180415697,0.1149435351705453,0.0047273142577283905,-0.04154229032627785,0.05558995586542,-0.030510547232705],[-0.05987065325819504,-0.06590792972732964,0.4731360753573437,0.3853042173984066,0.014106398602607751,-0.014381786978981015],[0.08048965096255642,0.08085708199541654,0.21487385562430122,0.1632563893799632,-0.23857853256401018,0.13654406972301147],[-0.2765317839870864,0.1565723968432848,-0.10511259550332741,0.2602013201769538,-0.4983440379010301,0.1023725709688257],[0.08046295324803243,0.0019832613495091994,-0.07472635096648084,-0.020428906986922853,0.03261274487061189,-0.16621234652989955]]},{"inputs":[1,1,0,0,1,0],"outputs":[1,1,1,0],"biases":[0.09801895415342904,0.007061036709206145,-0.11722957588196728,-0.04365968018812491],"weights":[[0.21750483943793972,0.05766456245900299,-0.1774747887142878,-0.12011370360148535],[0.30592916890687466,0.10089300584072107,0.039192032578900804,-0.1975407137449875],[0.07034502102435909,-0.1634610086647917,0.14541468804481777,0.08612543140698234],[-0.23414939299548032,-0.3596249519736839,-0.07660191068436908,-0.24037488612664032],[-0.1672769201339535,0.04852940180588616,0.3274975076170971,0.0555046185587802],[-0.35236482305416933,0.3099193452351467,0.031043152803113885,0.028300478690623007]]}]}');
     init();
 }

@@ -8,7 +8,15 @@ body {
     gap: 0.5rem;
 }
 
+#networkCanvas,
+#miniMapCanvas,
 #verticalButtons {
+    position: absolute;
+}
+
+#verticalButtons {
+    bottom: 1rem;
+    left: 1rem;
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
@@ -24,13 +32,22 @@ button {
 
 button:hover {
     background: blue;
+    color: white;
 }
 
 #networkCanvas {
-    display: none;
+    top: 1rem;
+    right: 1rem;
     background-color: black;
 }
 
 #carCanvas {
-    background-color: lightgrey;
+    background-color: #2a5;
+}
+
+#miniMapCanvas {
+    border-radius: 100%;;
+    top: 1rem;
+    left: 1rem;
+    background-color: black;
 }
